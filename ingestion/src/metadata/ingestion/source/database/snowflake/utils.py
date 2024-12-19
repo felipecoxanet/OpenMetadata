@@ -146,6 +146,7 @@ def _get_query_parameters(
     self, connection, schema: str, incremental: Optional[IncrementalConfig]
 ):
     """Returns the proper query parameters depending if the extraciton is Incremental or Full"""
+    #database, _ = self._current_database_schema(connection)
     parameters = {"schema": fqn.unquote_name(schema)}
 
     if incremental and incremental.enabled:
@@ -256,6 +257,7 @@ def get_schema_columns(self, connection, schema, **kw):
     None, as it is cacheable and is an unexpected return type for this function"""
     ans = {}
     current_database, _ = self._current_database_schema(connection, **kw)
+    #current_database_quoted = _quoted_name(entity_name=current_database)
     full_schema_name = self._denormalize_quote_join(
         current_database, fqn.quote_name(schema)
     )
@@ -352,8 +354,10 @@ def _current_database_schema(self, connection, **kw):  # pylint: disable=unused-
         "select current_database(), current_schema();"
     ).fetchone()
     return (
-        self.normalize_name(_quoted_name(entity_name=res[0])),
-        self.normalize_name(res[1]),
+        #self.normalize_name(_quoted_name(entity_name=res[0])),
+        _quoted_name(entity_name=res[0]),
+        #self.normalize_name(res[1]),
+        _quoted_name(entity_name=res[1])
     )
 
 
@@ -362,11 +366,15 @@ def get_pk_constraint(self, connection, table_name, schema=None, **kw):
     schema = schema or self.default_schema_name
     schema = _quoted_name(entity_name=schema)
     current_database, current_schema = self._current_database_schema(connection, **kw)
-    full_schema_name = self._denormalize_quote_join(
-        current_database, schema if schema else current_schema
-    )
+    #current_database = _quoted_name(entity_name=current_database)
+    table_name = _quoted_name(entity_name=table_name)
+    # full_schema_name = self._denormalize_quote_join(
+    #     current_database, schema if schema else current_schema
+    # )
+    full_schema_name = f"{current_database}.{schema if schema else current_schema}"
+
     return self._get_schema_primary_keys(
-        connection, self.denormalize_name(full_schema_name), **kw
+        connection, full_schema_name, **kw
     ).get(table_name, {"constrained_columns": [], "name": None})
 
 
@@ -378,6 +386,7 @@ def get_foreign_keys(self, connection, table_name, schema=None, **kw):
     schema = schema or self.default_schema_name
     schema = _quoted_name(entity_name=schema)
     current_database, current_schema = self._current_database_schema(connection, **kw)
+    #current_database = _quoted_name(entity_name=current_database)
     full_schema_name = self._denormalize_quote_join(
         current_database, schema if schema else current_schema
     )
@@ -452,6 +461,7 @@ def get_unique_constraints(self, connection, table_name, schema, **kw):
     schema = schema or self.default_schema_name
     schema = _quoted_name(entity_name=schema)
     current_database, current_schema = self._current_database_schema(connection, **kw)
+    #current_database = _quoted_name(entity_name=current_database)
     full_schema_name = self._denormalize_quote_join(
         current_database, schema if schema else current_schema
     )

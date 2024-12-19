@@ -217,7 +217,7 @@ def _init_database(engine_wrapper: SnowflakeEngineWrapper):
         if not engine_wrapper.database_name:
             databases = engine_wrapper.engine.execute(SNOWFLAKE_GET_DATABASES)
             for database in databases:
-                engine_wrapper.database_name = database.name
+                engine_wrapper.database_name = f'"{database.name}"'
                 break
     else:
         engine_wrapper.database_name = engine_wrapper.service_connection.database
@@ -230,7 +230,15 @@ def execute_inspector_func(engine_wrapper: SnowflakeEngineWrapper, func_name: st
     the function with name `func_name` and executes it
     """
     _init_database(engine_wrapper)
-    engine_wrapper.engine.execute(f'USE DATABASE "{engine_wrapper.database_name}"')
+
+    # Força o uso de aspas duplas em todos os identificadores
+    engine_wrapper.engine.execute("ALTER SESSION SET QUOTED_IDENTIFIERS_IGNORE_CASE = false")
+    #engine_wrapper.engine.execute("ALTER SESSION SET IDENTIFIER_CASE_MATCH = ALWAYS")
+
+    # Use aspas duplas no nome do banco de dados
+    database_name = f'"{engine_wrapper.database_name}"' if not engine_wrapper.database_name.startswith('"') else engine_wrapper.database_name
+    engine_wrapper.engine.execute(f'USE DATABASE {database_name}')
+
     inspector = inspect(engine_wrapper.engine)
     inspector_fn = getattr(inspector, func_name)
     inspector_fn()

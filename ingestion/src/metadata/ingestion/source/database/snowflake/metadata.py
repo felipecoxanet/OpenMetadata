@@ -229,25 +229,25 @@ class SnowflakeSource(
                 )
             )
 
-    def set_partition_details(self) -> None:
+    def set_partition_details(self, database_name: str) -> None:
         self.partition_details.clear()
-        results = self.engine.execute(SNOWFLAKE_GET_CLUSTER_KEY).all()
+        results = self.engine.execute(SNOWFLAKE_GET_CLUSTER_KEY.format(database_name=database_name)).all()
         for row in results:
             if row.CLUSTERING_KEY:
                 self.partition_details[
                     f"{row.TABLE_SCHEMA}.{row.TABLE_NAME}"
                 ] = row.CLUSTERING_KEY
 
-    def set_schema_description_map(self) -> None:
+    def set_schema_description_map(self, database_name: str) -> None:
         self.schema_desc_map.clear()
-        results = self.engine.execute(SNOWFLAKE_GET_SCHEMA_COMMENTS).all()
+        results = self.engine.execute(SNOWFLAKE_GET_SCHEMA_COMMENTS.format(database_name=database_name)).all()
         for row in results:
             self.schema_desc_map[(row.DATABASE_NAME, row.SCHEMA_NAME)] = row.COMMENT
 
-    def set_database_description_map(self) -> None:
+    def set_database_description_map(self, database_name: str) -> None:
         self.database_desc_map.clear()
         if not self.database_desc_map:
-            results = self.engine.execute(SNOWFLAKE_GET_DATABASE_COMMENTS).all()
+            results = self.engine.execute(SNOWFLAKE_GET_DATABASE_COMMENTS.format(database_name=database_name)).all()
             for row in results:
                 self.database_desc_map[row.DATABASE_NAME] = row.COMMENT
 
@@ -287,9 +287,9 @@ class SnowflakeSource(
         if configured_db:
             self.set_inspector(configured_db)
             self.set_session_query_tag()
-            self.set_partition_details()
-            self.set_schema_description_map()
-            self.set_database_description_map()
+            self.set_partition_details(configured_db)
+            self.set_schema_description_map(configured_db)
+            self.set_database_description_map(configured_db)
             self.set_external_location_map(configured_db)
             yield configured_db
         else:
@@ -313,10 +313,10 @@ class SnowflakeSource(
                 try:
                     self.set_inspector(database_name=new_database)
                     self.set_session_query_tag()
-                    self.set_partition_details()
-                    self.set_schema_description_map()
-                    self.set_database_description_map()
-                    self.set_external_location_map(new_database)
+                    self.set_partition_details(database_name=new_database)
+                    self.set_schema_description_map(database_name=new_database)
+                    self.set_database_description_map(database_name=new_database)
+                    self.set_external_location_map(database_name=new_database)
                     yield new_database
                 except Exception as exc:
                     logger.debug(traceback.format_exc())
