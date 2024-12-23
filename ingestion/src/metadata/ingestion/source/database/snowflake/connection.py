@@ -232,7 +232,7 @@ def execute_inspector_func(engine_wrapper: SnowflakeEngineWrapper, func_name: st
     _init_database(engine_wrapper)
 
     # Força o uso de aspas duplas em todos os identificadores
-    engine_wrapper.engine.execute("ALTER SESSION SET QUOTED_IDENTIFIERS_IGNORE_CASE = false")
+    #engine_wrapper.engine.execute("ALTER SESSION SET QUOTED_IDENTIFIERS_IGNORE_CASE = false")
     #engine_wrapper.engine.execute("ALTER SESSION SET IDENTIFIER_CASE_MATCH = ALWAYS")
 
     # Use aspas duplas no nome do banco de dados

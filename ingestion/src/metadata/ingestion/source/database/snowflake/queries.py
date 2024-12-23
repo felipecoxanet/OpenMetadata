@@ -266,8 +266,8 @@ SELECT /* sqlalchemy:_get_schema_columns */
         ic.comment,
         ic.identity_start,
         ic.identity_increment
-    FROM {database_name}.information_schema.columns ic
-    WHERE ic.table_schema=:table_schema
+    FROM information_schema.columns ic
+    WHERE ic.table_schema = '{table_schema}'
     ORDER BY ic.ordinal_position
 """
 

@@ -231,21 +231,37 @@ class SnowflakeSource(
 
     def set_partition_details(self, database_name: str) -> None:
         self.partition_details.clear()
-        results = self.engine.execute(SNOWFLAKE_GET_CLUSTER_KEY.format(database_name=database_name)).all()
-        for row in results:
-            if row.CLUSTERING_KEY:
-                self.partition_details[
-                    f"{row.TABLE_SCHEMA}.{row.TABLE_NAME}"
-                ] = row.CLUSTERING_KEY
+        database_name = normalize_names(self, database_name)
+        # results = self.engine.execute(SNOWFLAKE_GET_CLUSTER_KEY.format(database_name=database_name)).all()
+        # for row in results:
+        #     if row.CLUSTERING_KEY:
+        #         self.partition_details[
+        #             f"{row.TABLE_SCHEMA}.{row.TABLE_NAME}"
+        #         ] = row.CLUSTERING_KEY
+        try:
+            results = self.engine.execute(
+                SNOWFLAKE_GET_CLUSTER_KEY.format(database_name=database_name)
+            ).all()
+            for row in results:
+                if hasattr(row, 'CLUSTERING_KEY') and row.CLUSTERING_KEY:
+                    self.partition_details[
+                        f"{row.TABLE_SCHEMA}.{row.TABLE_NAME}"
+                    ] = row.CLUSTERING_KEY
+        except Exception as err:
+            logger.warning(
+                f"Error fetching clustering keys for database {database_name}: {err}"
+            )
 
     def set_schema_description_map(self, database_name: str) -> None:
         self.schema_desc_map.clear()
+        database_name = normalize_names(self, database_name)
         results = self.engine.execute(SNOWFLAKE_GET_SCHEMA_COMMENTS.format(database_name=database_name)).all()
         for row in results:
             self.schema_desc_map[(row.DATABASE_NAME, row.SCHEMA_NAME)] = row.COMMENT
 
     def set_database_description_map(self, database_name: str) -> None:
         self.database_desc_map.clear()
+        database_name = normalize_names(self, database_name)
         if not self.database_desc_map:
             results = self.engine.execute(SNOWFLAKE_GET_DATABASE_COMMENTS.format(database_name=database_name)).all()
             for row in results:
@@ -253,6 +269,7 @@ class SnowflakeSource(
 
     def set_external_location_map(self, database_name: str) -> None:
         self.external_location_map.clear()
+        database_name = normalize_names(self, database_name)
         results = self.engine.execute(
             SNOWFLAKE_GET_EXTERNAL_LOCATIONS.format(database_name=database_name)
         ).all()

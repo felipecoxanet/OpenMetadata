@@ -146,15 +146,16 @@ def _get_query_parameters(
     self, connection, schema: str, incremental: Optional[IncrementalConfig]
 ):
     """Returns the proper query parameters depending if the extraciton is Incremental or Full"""
-    #database, _ = self._current_database_schema(connection)
-    parameters = {"schema": fqn.unquote_name(schema)}
+    database_name, schema_name = _current_database_schema(self, connection)
+    schema = normalize_names(self, schema) if schema else schema_name
+
+    parameters = {"schema": schema}
 
     if incremental and incremental.enabled:
-        database, _ = self._current_database_schema(connection)  # pylint: disable=W0212
         parameters = {
             **parameters,
             "date": incremental.start_timestamp,
-            "database": database,
+            "database": database_name,
         }
 
     return parameters
@@ -247,7 +248,16 @@ def get_table_comment(
 
 
 def normalize_names(self, name):  # pylint: disable=unused-argument
-    return name
+    """Normalize case of string identifier."""
+    if name is None:
+        return None
+    if not isinstance(name, str):
+        return name
+    # Se o nome já está entre aspas duplas, retorna como está
+    if name.startswith('"') and name.endswith('"'):
+        return name
+    # Se não, adiciona as aspas duplas
+    return f'"{name}"'
 
 
 # pylint: disable=too-many-locals,protected-access
@@ -256,18 +266,19 @@ def get_schema_columns(self, connection, schema, **kw):
     """Get all columns in the schema, if we hit 'Information schema query returned too much data' problem return
     None, as it is cacheable and is an unexpected return type for this function"""
     ans = {}
-    current_database, _ = self._current_database_schema(connection, **kw)
-    #current_database_quoted = _quoted_name(entity_name=current_database)
-    full_schema_name = self._denormalize_quote_join(
-        current_database, fqn.quote_name(schema)
-    )
+    current_database, current_schema = _current_database_schema(self, connection)
+    schema = normalize_names(self, schema) if schema else current_schema
+    table_schema = self.denormalize_name(fqn.unquote_name(schema))
+    # full_schema_name = self._denormalize_quote_join(
+    #     current_database, _quoted_name(entity_name=schema)
+    # )
+    full_schema_name = f'{current_database}.{schema}'
     try:
         schema_primary_keys = self._get_schema_primary_keys(
             connection, full_schema_name, **kw
         )
         result = connection.execute(
-            text(SNOWFLAKE_GET_SCHEMA_COLUMNS),
-            {"table_schema": self.denormalize_name(fqn.unquote_name(schema))}
+            SNOWFLAKE_GET_SCHEMA_COLUMNS.format(table_schema=table_schema)
             # removing " " from schema name because schema name is in the WHERE clause of a query
         )
 
@@ -349,29 +360,26 @@ def get_schema_columns(self, connection, schema, **kw):
 
 @reflection.cache
 def _current_database_schema(self, connection, **kw):  # pylint: disable=unused-argument
-    """Getting table name in quotes"""
+    """Getting database and schema name in quotes"""
     res = connection.exec_driver_sql(
         "select current_database(), current_schema();"
     ).fetchone()
     return (
-        #self.normalize_name(_quoted_name(entity_name=res[0])),
-        _quoted_name(entity_name=res[0]),
-        #self.normalize_name(res[1]),
-        _quoted_name(entity_name=res[1])
+        normalize_names(self, res[0]),
+        normalize_names(self, res[1]),
     )
 
 
 @reflection.cache
 def get_pk_constraint(self, connection, table_name, schema=None, **kw):
+    current_database, current_schema = _current_database_schema(self, connection)
     schema = schema or self.default_schema_name
-    schema = _quoted_name(entity_name=schema)
-    current_database, current_schema = self._current_database_schema(connection, **kw)
-    #current_database = _quoted_name(entity_name=current_database)
-    table_name = _quoted_name(entity_name=table_name)
+    schema = normalize_names(self, schema) if schema else current_schema
+    #table_name = self.normalize_name(table_name)
     # full_schema_name = self._denormalize_quote_join(
     #     current_database, schema if schema else current_schema
     # )
-    full_schema_name = f"{current_database}.{schema if schema else current_schema}"
+    full_schema_name = f"{current_database}.{schema}"
 
     return self._get_schema_primary_keys(
         connection, full_schema_name, **kw
@@ -383,23 +391,26 @@ def get_foreign_keys(self, connection, table_name, schema=None, **kw):
     """
     Gets all foreign keys for a table
     """
+    current_database, current_schema = _current_database_schema(self, connection)
     schema = schema or self.default_schema_name
-    schema = _quoted_name(entity_name=schema)
-    current_database, current_schema = self._current_database_schema(connection, **kw)
-    #current_database = _quoted_name(entity_name=current_database)
-    full_schema_name = self._denormalize_quote_join(
-        current_database, schema if schema else current_schema
-    )
+    schema = normalize_names(self, schema) if schema else current_schema
+
+    # full_schema_name = self._denormalize_quote_join(
+    #     current_database, schema
+    # )
+
+    full_schema_name = f"{current_database}.{schema}"
 
     foreign_key_map = self._get_schema_foreign_keys(
-        connection, self.denormalize_name(full_schema_name), **kw
+        connection, full_schema_name, **kw
     )
     return foreign_key_map.get(table_name, [])
 
 
 @reflection.cache
 def get_schema_foreign_keys(self, connection, schema, **kw):
-    current_database, current_schema = self._current_database_schema(connection, **kw)
+    _, current_schema = _current_database_schema(self, connection)
+    schema = schema if normalize_names(self, schema) else current_schema
     result = connection.execute(
         text(
             f"SHOW /* sqlalchemy:_get_schema_foreign_keys */ IMPORTED KEYS IN SCHEMA {schema}"
@@ -458,15 +469,16 @@ def get_schema_foreign_keys(self, connection, schema, **kw):
 
 @reflection.cache
 def get_unique_constraints(self, connection, table_name, schema, **kw):
+    current_database, current_schema = _current_database_schema(self, connection)
     schema = schema or self.default_schema_name
-    schema = _quoted_name(entity_name=schema)
-    current_database, current_schema = self._current_database_schema(connection, **kw)
-    #current_database = _quoted_name(entity_name=current_database)
-    full_schema_name = self._denormalize_quote_join(
-        current_database, schema if schema else current_schema
-    )
+    schema = normalize_names(self, schema) if schema else current_schema
+    # full_schema_name = self._denormalize_quote_join(
+    #     current_database, schema
+    # )
+    full_schema_name = f"{current_database}.{schema}"
+
     return self._get_schema_unique_constraints(
-        connection, self.denormalize_name(full_schema_name), **kw
+        connection, full_schema_name, **kw
     ).get(table_name, [])
 
 
@@ -475,9 +487,9 @@ def get_columns(self, connection, table_name, schema=None, **kw):
     """
     Gets all column info given the table info
     """
+    _, schema_name = _current_database_schema(self, connection)
     schema = schema or self.default_schema_name
-    if not schema:
-        _, schema = self._current_database_schema(connection, **kw)
+    schema = normalize_names(self, schema) if schema else schema_name
 
     schema_columns = self._get_schema_columns(connection, schema, **kw)
     if schema_columns is None:
